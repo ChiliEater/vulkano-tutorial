@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=vulkano_tutorial",
+                    "--package=vulkano_tutorial"
+                ],
+                "filter": {
+                    "name": "vulkano_tutorial",
+                    "kind": "bin"
+                },
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "MANGOHUD": "1",
+                //"WINIT_UNIX_BACKEND": "x11",
+                //"DRI_PRIME": "pci-0000_01_00_0",
+                //"DRI_PRIME": "1",
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=vulkano_tutorial",
+                    "--package=vulkano_tutorial"
+                ],
+                "filter": {
+                    "name": "vulkano_tutorial",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
