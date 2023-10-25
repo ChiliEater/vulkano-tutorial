@@ -1,24 +1,26 @@
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, RenderPassBeginInfo, SubpassContents,
-};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::swapchain::{
-    self, AcquireError, SwapchainPresentInfo,
-};
-use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::single_pass_renderpass;
+use std::sync::Arc;
 
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, RenderPassBeginInfo, SubpassContents};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
+use vulkano::memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator};
+use vulkano::pipeline::graphics::viewport::Viewport;
+use vulkano::single_pass_renderpass;
+use vulkano::swapchain::{self, AcquireError, SwapchainPresentInfo};
+use vulkano::sync::{self, FlushError, GpuFuture};
+
+use vulkano_tutorial::mesh::vertex::Vertex3d;
+use vulkano_tutorial::shaders::simple;
 use vulkano_tutorial::vulkano_objects;
 use vulkano_tutorial::vulkano_objects::buffers::window_size_dependent_setup;
+use vulkano_tutorial::vulkano_objects::pipeline::create_pipeline;
 use vulkano_tutorial::vulkano_objects::swapchain::{create_swapchain, swapchain_from};
 use vulkano_win::VkSurfaceBuild;
 
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
-
 
 fn main() {
     let instance = vulkano_objects::instance::new();
@@ -53,10 +55,43 @@ fn main() {
 
     let (mut swapchain, images) = create_swapchain(device.clone(), surface.clone());
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+    // TODO: Clean this up later
+    let vertices = [
+        Vertex3d {
+            position: [-0.5, 0.5, 0.0],
+        },
+        Vertex3d {
+            position: [0.5, 0.5, 0.0],
+        },
+        Vertex3d {
+            position: [0.0, -0.5, 0.0],
+        },
+    ];
+
+    let vertices_count = vertices.len();
+
+    let vertex_buffer = Buffer::from_iter(
+        &memory_allocator,
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: vulkano::memory::allocator::MemoryUsage::Upload,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
+
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     // shaders around here
+    let vs_temp = simple::vs::load(device.clone()).unwrap();
+    let fs_temp = simple::fs::load(device.clone()).unwrap();
 
     let render_pass = single_pass_renderpass!(
         device.clone(),
@@ -80,6 +115,14 @@ fn main() {
         dimensions: [0.0, 0.0],
         depth_range: 0.0..1.0,
     };
+
+    let pipeline = create_pipeline(
+        device.clone(),
+        vs_temp,
+        fs_temp,
+        render_pass.clone(),
+        viewport.clone(),
+    );
 
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
@@ -137,7 +180,7 @@ fn main() {
                     recreate_swapchain = true;
                 }
 
-                let clear_values = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
+                let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
 
                 // Create command buffer stuff
                 let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
@@ -146,19 +189,26 @@ fn main() {
                     vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
-            
+
                 cmd_buffer_builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values,
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_index as usize].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         SubpassContents::Inline,
                     )
                     .unwrap()
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .draw(vertices_count as u32, 1, 0, 0)
+                    .unwrap()
                     .end_render_pass()
                     .unwrap();
-            
+
                 let command_buffer = cmd_buffer_builder.build().unwrap();
 
                 // Execute render command
@@ -169,8 +219,8 @@ fn main() {
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
                     .then_swapchain_present(
-                        queue.clone(), 
-                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index,)
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
